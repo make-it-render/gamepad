@@ -254,7 +254,10 @@ pub const Context = struct {
     }
 
     fn sync_trigger(self: *@This(), id: Id, slot: *Slot, axis: Axis, raw: u8) void {
-        const value = normalize_trigger(raw, self.options.deadzone);
+        const value = common.apply_trigger_deadzone(
+            @as(f32, @floatFromInt(raw)) / 255.0,
+            self.options.deadzone,
+        );
         const idx = @intFromEnum(axis);
         if (slot.state.axes[idx] != value) {
             slot.state.axes[idx] = value;
@@ -276,7 +279,7 @@ pub const Context = struct {
         const ny = -normalize_stick_axis(raw_y);
 
         // Apply radial deadzone.
-        const dz = apply_radial_deadzone(nx, ny, self.options.deadzone);
+        const dz = common.apply_radial_deadzone(nx, ny, self.options.deadzone);
 
         const xi = @intFromEnum(axis_x);
         const yi = @intFromEnum(axis_y);
@@ -305,29 +308,6 @@ fn normalize_stick_axis(raw: i16) f32 {
     return std.math.clamp(@as(f32, @floatFromInt(raw)) / 32767.0, -1.0, 1.0);
 }
 
-/// Map a u8 trigger value to 0.0..1.0, with a threshold deadzone.
-/// Values below the deadzone are snapped to 0; the rest is rescaled so the
-/// output starts at 0 at the deadzone edge.
-fn normalize_trigger(raw: u8, deadzone: f32) f32 {
-    const value: f32 = @as(f32, @floatFromInt(raw)) / 255.0;
-    if (value < deadzone) return 0.0;
-    if (deadzone >= 1.0) return 0.0;
-    return (value - deadzone) / (1.0 - deadzone);
-}
-
-/// Apply a radial (circular) deadzone to a stick X/Y pair. Returns the
-/// adjusted [x, y] values. Within the deadzone both axes are 0; outside
-/// the output is rescaled so it starts at 0 at the deadzone edge.
-fn apply_radial_deadzone(x: f32, y: f32, deadzone: f32) [2]f32 {
-    const magnitude = @sqrt(x * x + y * y);
-    if (magnitude < deadzone) return .{ 0.0, 0.0 };
-    if (deadzone >= 1.0) return .{ 0.0, 0.0 };
-    const scale = (magnitude - deadzone) / (1.0 - deadzone) / magnitude;
-    return .{
-        std.math.clamp(x * scale, -1.0, 1.0),
-        std.math.clamp(y * scale, -1.0, 1.0),
-    };
-}
 
 // ── button mapping ──────────────────────────────────────────────────────────
 
@@ -395,31 +375,3 @@ test "normalize_stick_axis" {
     try testing.expectApproxEqAbs(@as(f32, 0.5), normalize_stick_axis(16383), 0.01);
 }
 
-test "normalize_trigger" {
-    const testing = std.testing;
-    const dz: f32 = 0.2;
-    // Below deadzone → 0.
-    try testing.expectEqual(@as(f32, 0.0), normalize_trigger(0, dz));
-    try testing.expectEqual(@as(f32, 0.0), normalize_trigger(50, dz)); // 50/255 ≈ 0.196 < 0.2
-    // Full press.
-    try testing.expectApproxEqAbs(@as(f32, 1.0), normalize_trigger(255, dz), 0.001);
-    // No deadzone.
-    try testing.expectApproxEqAbs(@as(f32, 0.5), normalize_trigger(127, 0.0), 0.01);
-}
-
-test "apply_radial_deadzone" {
-    const testing = std.testing;
-    const dz: f32 = 0.2;
-    // Inside deadzone.
-    const z = apply_radial_deadzone(0.1, 0.1, dz);
-    try testing.expectEqual(@as(f32, 0.0), z[0]);
-    try testing.expectEqual(@as(f32, 0.0), z[1]);
-    // At full deflection.
-    const f = apply_radial_deadzone(1.0, 0.0, dz);
-    try testing.expectApproxEqAbs(@as(f32, 1.0), f[0], 0.001);
-    try testing.expectEqual(@as(f32, 0.0), f[1]);
-    // Origin.
-    const o = apply_radial_deadzone(0.0, 0.0, dz);
-    try testing.expectEqual(@as(f32, 0.0), o[0]);
-    try testing.expectEqual(@as(f32, 0.0), o[1]);
-}

@@ -33,8 +33,7 @@ pub const Id = common.Id;
 pub const Options = common.Options;
 pub const max_gamepads = common.max_gamepads;
 
-/// The platform-specific backend. Currently Linux (evdev); Windows (xinput)
-/// and Steam Input are planned.
+/// The platform-specific backend.
 pub const Context = switch (builtin.os.tag) {
     .linux => @import("evdev.zig").Context,
     .windows => @import("xinput.zig").Context,

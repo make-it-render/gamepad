@@ -1,6 +1,6 @@
 //! Platform-independent gamepad types.
 //!
-//! These types are shared across all backends (evdev, xinput, steam) and form
+//! These types are shared across all backends (evdev, xinput) and form
 //! the public API of the library. They use positional names (south, east, ...)
 //! rather than vendor-specific labels (A, B, X, Y) so they work for any
 //! controller.
@@ -98,3 +98,60 @@ pub const Options = struct {
     /// magnitude below this are snapped to zero. Default is 0.2.
     deadzone: f32 = 0.2,
 };
+
+// ── deadzone functions ──────────────────────────────────────────────────────
+//
+// Shared across backends. Sticks use a radial (circular) deadzone that
+// treats X/Y as a 2D vector. Triggers use a simple threshold deadzone.
+
+const std = @import("std");
+
+/// Apply a radial (circular) deadzone to a stick X/Y pair. Returns the
+/// adjusted [x, y] values. Within the deadzone both axes are 0; outside
+/// the output is rescaled so it starts at 0 at the deadzone edge.
+pub fn apply_radial_deadzone(x: f32, y: f32, deadzone: f32) [2]f32 {
+    const magnitude = @sqrt(x * x + y * y);
+    if (magnitude < deadzone) return .{ 0.0, 0.0 };
+    if (deadzone >= 1.0) return .{ 0.0, 0.0 };
+    const scale = (magnitude - deadzone) / (1.0 - deadzone) / magnitude;
+    return .{
+        std.math.clamp(x * scale, -1.0, 1.0),
+        std.math.clamp(y * scale, -1.0, 1.0),
+    };
+}
+
+/// Apply a threshold deadzone to a trigger value (0.0–1.0). Values below
+/// the deadzone are snapped to 0; the rest is rescaled so the output
+/// starts at 0 at the deadzone edge.
+pub fn apply_trigger_deadzone(value: f32, deadzone: f32) f32 {
+    if (value < deadzone) return 0.0;
+    if (deadzone >= 1.0) return 0.0;
+    return (value - deadzone) / (1.0 - deadzone);
+}
+
+test "apply_radial_deadzone" {
+    const testing = std.testing;
+    const dz: f32 = 0.2;
+    // Inside deadzone.
+    const z = apply_radial_deadzone(0.1, 0.1, dz);
+    try testing.expectEqual(@as(f32, 0.0), z[0]);
+    try testing.expectEqual(@as(f32, 0.0), z[1]);
+    // At full deflection.
+    const f = apply_radial_deadzone(1.0, 0.0, dz);
+    try testing.expectApproxEqAbs(@as(f32, 1.0), f[0], 0.001);
+    try testing.expectEqual(@as(f32, 0.0), f[1]);
+    // Origin.
+    const o = apply_radial_deadzone(0.0, 0.0, dz);
+    try testing.expectEqual(@as(f32, 0.0), o[0]);
+    try testing.expectEqual(@as(f32, 0.0), o[1]);
+}
+
+test "apply_trigger_deadzone" {
+    const testing = std.testing;
+    const dz: f32 = 0.2;
+    try testing.expectEqual(@as(f32, 0.0), apply_trigger_deadzone(0.0, dz));
+    try testing.expectEqual(@as(f32, 0.0), apply_trigger_deadzone(0.19, dz));
+    try testing.expectApproxEqAbs(@as(f32, 1.0), apply_trigger_deadzone(1.0, dz), 0.001);
+    // No deadzone.
+    try testing.expectApproxEqAbs(@as(f32, 0.5), apply_trigger_deadzone(0.5, 0.0), 0.001);
+}

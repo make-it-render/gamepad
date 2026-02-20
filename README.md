@@ -8,8 +8,7 @@ syscalls for easy cross-compilation.
 | Platform | Backend | Status |
 |----------|---------|--------|
 | Linux | evdev (raw syscalls, no libudev) | Done |
-| Windows | XInput (dynamic `xinput1_4.dll`) | Planned |
-| Steam | Steam Input (runtime dlopen) | Planned |
+| Windows | XInput (dynamic `xinput1_4.dll`) | Done |
 
 ## Usage
 
@@ -99,7 +98,19 @@ zig build docs     # generate documentation
 ```sh
 zig build -Dtarget=x86_64-linux
 zig build -Dtarget=aarch64-linux
+zig build -Dtarget=x86_64-windows
 ```
+
+## Steam compatibility
+
+Steam-managed controllers (PlayStation, Nintendo, Steam Controller, Steam Deck)
+work out of the box — no Steam SDK needed. Steam's built-in gamepad emulation
+creates virtual OS-level devices (evdev on Linux, XInput on Windows) that the
+existing backends pick up automatically.
+
+## Future work
+
+- **macOS** — Game Controller framework (`GCController`)
 
 ## License
 

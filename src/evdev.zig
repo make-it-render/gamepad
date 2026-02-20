@@ -146,6 +146,7 @@ const DeviceSlot = struct {
     id: Id,
     event_number: u16, // the N in /dev/input/eventN, used to deduplicate
     abs_info: [Axis.count]AbsInfo, // calibration data, one per Axis
+    sticks_raw: [4]f32 = .{0} ** 4, // pre-deadzone normalized stick values (lx, ly, rx, ry)
     state: State,
 };
 
@@ -387,15 +388,48 @@ pub const Context = struct {
         const mapping = map_axis(ev_axis) orelse return;
         const info = dev.abs_info[@intFromEnum(mapping.axis)];
 
-        const value = if (mapping.is_trigger)
-            normalize_trigger(raw, info)
-        else
-            normalize_stick(raw, info);
+        if (mapping.is_trigger) {
+            const value = common.apply_trigger_deadzone(
+                normalize_trigger(raw, info),
+                self.options.deadzone,
+            );
+            const idx = @intFromEnum(mapping.axis);
+            if (dev.state.axes[idx] != value) {
+                dev.state.axes[idx] = value;
+                self.emit(.{ .axis_moved = .{ .id = dev.id, .axis = mapping.axis, .value = value } });
+            }
+        } else {
+            // Stick axis — update pre-deadzone value and recompute the
+            // radial deadzone for this stick pair. Either axis of the
+            // pair may change when the other moves (a radial deadzone
+            // treats X/Y as a 2D vector).
+            const idx = @intFromEnum(mapping.axis);
+            dev.sticks_raw[idx] = normalize_stick(raw, info);
 
-        const idx = @intFromEnum(mapping.axis);
-        if (dev.state.axes[idx] != value) {
-            dev.state.axes[idx] = value;
-            self.emit(.{ .axis_moved = .{ .id = dev.id, .axis = mapping.axis, .value = value } });
+            const x_idx = (idx / 2) * 2; // round down to even: 0 or 2
+            const y_idx = x_idx + 1;
+            const dz = common.apply_radial_deadzone(
+                dev.sticks_raw[x_idx],
+                dev.sticks_raw[y_idx],
+                self.options.deadzone,
+            );
+
+            if (dev.state.axes[x_idx] != dz[0]) {
+                dev.state.axes[x_idx] = dz[0];
+                self.emit(.{ .axis_moved = .{
+                    .id = dev.id,
+                    .axis = @enumFromInt(x_idx),
+                    .value = dz[0],
+                } });
+            }
+            if (dev.state.axes[y_idx] != dz[1]) {
+                dev.state.axes[y_idx] = dz[1];
+                self.emit(.{ .axis_moved = .{
+                    .id = dev.id,
+                    .axis = @enumFromInt(y_idx),
+                    .value = dz[1],
+                } });
+            }
         }
     }
 
