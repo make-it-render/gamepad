@@ -37,7 +37,7 @@ pub const max_gamepads = common.max_gamepads;
 /// and Steam Input are planned.
 pub const Context = switch (builtin.os.tag) {
     .linux => @import("evdev.zig").Context,
-    // .windows => @import("xinput.zig").Context,
+    .windows => @import("xinput.zig").Context,
     else => @compileError("mir-gamepad: unsupported platform"),
 };
 
@@ -45,5 +45,8 @@ test {
     _ = common;
     if (builtin.os.tag == .linux) {
         _ = @import("evdev.zig");
+    }
+    if (builtin.os.tag == .windows) {
+        _ = @import("xinput.zig");
     }
 }
