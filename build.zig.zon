@@ -1,0 +1,12 @@
+.{
+    .name = .mir_gamepad,
+    .fingerprint = 0xd4dc2fe448f28bc,
+    .version = "0.0.0",
+    .minimum_zig_version = "0.15.2",
+    .dependencies = .{},
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}
