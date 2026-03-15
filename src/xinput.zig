@@ -20,6 +20,7 @@ const State = common.State;
 const Id = common.Id;
 const Options = common.Options;
 
+const log = std.log.scoped(.xinput);
 const windows = std.os.windows;
 const DWORD = windows.DWORD;
 const HMODULE = windows.HMODULE;
@@ -76,8 +77,10 @@ const DllInfo = struct {
     get_state: XInputGetStateFn,
 };
 
-/// Try to load the XInput DLL and resolve `XInputGetState`.
-/// Tries `xinput1_4.dll` (Windows 8+), then `xinput9_1_0.dll` (Vista+).
+/// Load the XInput DLL from the system.
+/// NOTE: Uses default DLL search order. For hardened environments, consider
+/// using LoadLibraryExW with LOAD_LIBRARY_SEARCH_SYSTEM32 to prevent
+/// DLL hijacking from the current directory.
 fn load_xinput() !DllInfo {
     const L = std.unicode.utf8ToUtf16LeStringLiteral;
 
@@ -105,6 +108,8 @@ const Slot = struct {
 
 // ── public API ──────────────────────────────────────────────────────────────
 
+/// XInput gamepad context for Windows.
+/// NOT thread-safe — all calls (init, poll, deinit) must happen from the same thread.
 pub const Context = struct {
     allocator: std.mem.Allocator,
     options: Options,
@@ -297,7 +302,9 @@ pub const Context = struct {
     /// Append an event to the buffer. OOM is silently ignored — dropping
     /// an event is better than crashing.
     fn emit(self: *@This(), event: Event) void {
-        self.event_buf.append(self.allocator, event) catch {};
+        self.event_buf.append(self.allocator, event) catch {
+            log.warn("Event dropped: out of memory", .{});
+        };
     }
 };
 

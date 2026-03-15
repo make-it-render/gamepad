@@ -20,6 +20,7 @@ const Options = common.Options;
 
 const linux = std.os.linux;
 const posix = std.posix;
+const log = std.log.scoped(.evdev);
 
 // ── Linux kernel structs ────────────────────────────────────────────────────
 //
@@ -125,7 +126,7 @@ fn eviocgbit(ev: u8, len: u14) u32 {
 }
 
 /// `EVIOCGABS(axis)` — get the `AbsInfo` calibration data for one axis.
-fn eviocgabs(abs: u16) u32 {
+fn eviocgabs(abs: u8) u32 {
     return ioc(2, 'E', 0x40 + @as(u32, abs), @sizeOf(AbsInfo));
 }
 
@@ -152,6 +153,8 @@ const DeviceSlot = struct {
 
 // ── public API ──────────────────────────────────────────────────────────────
 
+/// Gamepad input context for Linux evdev.
+/// NOT thread-safe — all calls (init, poll, deinit) must happen from the same thread.
 pub const Context = struct {
     allocator: std.mem.Allocator,
     options: Options,
@@ -465,7 +468,9 @@ pub const Context = struct {
     /// an event is better than crashing, and in practice the buffer is
     /// small and rarely reallocates.
     fn emit(self: *@This(), event: Event) void {
-        self.event_buf.append(self.allocator, event) catch {};
+        self.event_buf.append(self.allocator, event) catch {
+            log.warn("Event dropped: out of memory", .{});
+        };
     }
 
     // ── internal: device management ─────────────────────────────────────
@@ -511,7 +516,7 @@ pub const Context = struct {
         const axis_codes = [_]EvAxis{ .x, .y, .rx, .ry, .z, .rz };
         var abs_info: [Axis.count]AbsInfo = undefined;
         for (axis_codes, 0..) |ax, i| {
-            abs_info[i] = query_abs_info(fd, @intFromEnum(ax));
+            abs_info[i] = query_abs_info(fd, @intCast(@intFromEnum(ax)));
         }
 
         self.devices.append(self.allocator, .{
@@ -586,9 +591,12 @@ fn is_gamepad(fd: posix.fd_t) bool {
 }
 
 /// Read calibration data (min/max range) for one axis via ioctl.
-fn query_abs_info(fd: posix.fd_t, abs_code: u16) AbsInfo {
+fn query_abs_info(fd: posix.fd_t, abs_code: u8) AbsInfo {
     var info = std.mem.zeroes(AbsInfo);
-    _ = linux.ioctl(@intCast(fd), eviocgabs(abs_code), @intFromPtr(&info));
+    const ret: isize = @bitCast(linux.ioctl(@intCast(fd), eviocgabs(abs_code), @intFromPtr(&info)));
+    if (ret < 0) {
+        log.warn("ioctl EVIOCGABS failed for axis 0x{x}", .{abs_code});
+    }
     return info;
 }
 
@@ -673,15 +681,15 @@ fn map_axis(code: EvAxis) ?AxisMapping {
 
 fn normalize_stick(raw: i32, info: AbsInfo) f32 {
     if (info.maximum == info.minimum) return 0;
-    const range: f32 = @floatFromInt(info.maximum - info.minimum);
-    const centered: f32 = @floatFromInt(raw - info.minimum);
-    return (centered / range) * 2.0 - 1.0;
+    const range: f32 = @floatFromInt(@as(i64, info.maximum) - @as(i64, info.minimum));
+    const centered: f32 = @floatFromInt(@as(i64, raw) - @as(i64, info.minimum));
+    return std.math.clamp((centered / range) * 2.0 - 1.0, -1.0, 1.0);
 }
 
 fn normalize_trigger(raw: i32, info: AbsInfo) f32 {
     if (info.maximum == info.minimum) return 0;
-    const range: f32 = @floatFromInt(info.maximum - info.minimum);
-    const value: f32 = @floatFromInt(raw - info.minimum);
+    const range: f32 = @floatFromInt(@as(i64, info.maximum) - @as(i64, info.minimum));
+    const value: f32 = @floatFromInt(@as(i64, raw) - @as(i64, info.minimum));
     return std.math.clamp(value / range, 0.0, 1.0);
 }
 
