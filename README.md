@@ -1,7 +1,6 @@
 # mir-gamepad
 
-Cross-platform gamepad input library for Zig. No system dependencies — pure
-syscalls for easy cross-compilation.
+Cross-platform gamepad input library for Zig. No system dependencies — pure syscalls for easy cross-compilation.
 
 Provides a unified API over platform-specific backends using comptime dispatch.
 
@@ -101,8 +100,7 @@ Positional naming avoids confusion between vendors:
 | `west` | X | Square | Y |
 | `north` | Y | Triangle | X |
 
-Other buttons: `left_bumper`, `right_bumper`, `back`, `start`, `guide`,
-`left_stick`, `right_stick`, `dpad_up`, `dpad_down`, `dpad_left`, `dpad_right`.
+Other buttons: `left_bumper`, `right_bumper`, `back`, `start`, `guide`, `left_stick`, `right_stick`, `dpad_up`, `dpad_down`, `dpad_left`, `dpad_right`.
 
 ### Axes
 
@@ -142,10 +140,7 @@ zig build -Dtarget=x86_64-windows
 
 ## Steam compatibility
 
-Steam-managed controllers (PlayStation, Nintendo, Steam Controller, Steam Deck)
-work out of the box — no Steam SDK needed. Steam's built-in gamepad emulation
-creates virtual OS-level devices (evdev on Linux, XInput on Windows) that the
-existing backends pick up automatically.
+Steam-managed controllers (PlayStation, Nintendo, Steam Controller, Steam Deck) work out of the box — no Steam SDK needed. Steam's built-in gamepad emulation creates virtual OS-level devices (evdev on Linux, XInput on Windows) that the existing backends pick up automatically.
 
 ## License
 
