@@ -1,4 +1,4 @@
-# mir-gamepad
+# gamepad
 
 Cross-platform gamepad input library for Zig. No system dependencies — pure syscalls for easy cross-compilation.
 
@@ -19,21 +19,21 @@ Provides a unified API over platform-specific backends using comptime dispatch.
 ### Install
 
 ```sh
-zig fetch --save git+https://github.com/make-it-render/mir-gamepad
+zig fetch --save git+https://github.com/make-it-render/gamepad
 ```
 
 ### build.zig
 
 ```zig
-const gamepad_dep = b.dependency("mir_gamepad", .{ .target = target, .optimize = optimize });
-exe.root_module.addImport("mir_gamepad", gamepad_dep.module("mir_gamepad"));
+const gamepad_dep = b.dependency("gamepad", .{ .target = target, .optimize = optimize });
+exe.root_module.addImport("gamepad", gamepad_dep.module("gamepad"));
 ```
 
 ### Example
 
 ```zig
 const std = @import("std");
-const gamepad = @import("mir_gamepad");
+const gamepad = @import("gamepad");
 
 var ctx = try gamepad.Context.init(allocator, .{});
 defer ctx.deinit();

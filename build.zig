@@ -4,7 +4,7 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const mod = b.addModule("mir_gamepad", .{
+    const mod = b.addModule("gamepad", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
@@ -19,10 +19,10 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .strip = optimize == .ReleaseSmall,
         });
-        demo_mod.addImport("mir_gamepad", mod);
+        demo_mod.addImport("gamepad", mod);
 
         const demo = b.addExecutable(.{
-            .name = "mir_gamepad",
+            .name = "gamepad",
             .root_module = demo_mod,
         });
 

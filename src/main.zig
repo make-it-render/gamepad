@@ -2,7 +2,7 @@
 //! Run with: zig build run
 
 const std = @import("std");
-const gamepad = @import("mir_gamepad");
+const gamepad = @import("gamepad");
 
 pub fn main() !void {
     var gpa: std.heap.GeneralPurposeAllocator(.{}) = .init;
@@ -11,7 +11,7 @@ pub fn main() !void {
     var ctx = try gamepad.Context.init(gpa.allocator(), .{});
     defer ctx.deinit();
 
-    std.debug.print("mir-gamepad demo — press Ctrl+C to quit\n", .{});
+    std.debug.print("gamepad demo — press Ctrl+C to quit\n", .{});
     std.debug.print("Listening for gamepad events...\n\n", .{});
 
     while (true) {

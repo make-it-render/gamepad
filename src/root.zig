@@ -1,4 +1,4 @@
-//! mir-gamepad — cross-platform gamepad input library.
+//! gamepad — cross-platform gamepad input library.
 //!
 //! Usage:
 //!

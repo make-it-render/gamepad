@@ -292,7 +292,7 @@ pub const Context = struct {
 
             var offset: usize = 0;
             while (offset + @sizeOf(linux.inotify_event) <= @as(usize, @intCast(bytes_read))) {
-                const event: *const linux.inotify_event = @alignCast(@ptrCast(buf[offset..].ptr));
+                const event: *const linux.inotify_event = @ptrCast(@alignCast(buf[offset..].ptr));
                 offset += @sizeOf(linux.inotify_event) + event.len;
 
                 const name = event.getName() orelse continue;

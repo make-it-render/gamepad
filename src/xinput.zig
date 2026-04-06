@@ -315,7 +315,6 @@ fn normalize_stick_axis(raw: i16) f32 {
     return std.math.clamp(@as(f32, @floatFromInt(raw)) / 32767.0, -1.0, 1.0);
 }
 
-
 // ── button mapping ──────────────────────────────────────────────────────────
 
 const ButtonMapping = struct {
@@ -381,4 +380,3 @@ test "normalize_stick_axis" {
     try testing.expectApproxEqAbs(@as(f32, -1.0), normalize_stick_axis(-32768), 0.001);
     try testing.expectApproxEqAbs(@as(f32, 0.5), normalize_stick_axis(16383), 0.01);
 }
-
