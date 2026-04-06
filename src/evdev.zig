@@ -163,6 +163,7 @@ pub const Context = struct {
     event_buf: std.ArrayListUnmanaged(Event),
     event_pos: usize,
     used_ids: u16, // bitmask — bit N is set when gamepad ID N is in use
+    sticky_ids: [common.max_gamepads]?u16, // indexed by Id, stores last-known event_number
 
     /// Set up the gamepad subsystem: start watching /dev/input for hotplug
     /// and scan for already-connected gamepads.
@@ -183,6 +184,7 @@ pub const Context = struct {
             .event_buf = .empty,
             .event_pos = 0,
             .used_ids = 0,
+            .sticky_ids = [_]?u16{null} ** common.max_gamepads,
         };
 
         self.scan_devices();
@@ -505,7 +507,9 @@ pub const Context = struct {
             return;
         }
 
-        const id = self.allocate_id() orelse {
+        // If this event_number was previously assigned an ID, reclaim it
+        // so the same controller keeps its player slot after reconnect.
+        const id = self.reclaim_sticky_id(event_number) orelse self.allocate_id() orelse {
             posix.close(fd);
             return;
         };
@@ -537,6 +541,9 @@ pub const Context = struct {
     fn remove_device(self: *@This(), idx: usize) void {
         const dev = self.devices.items[idx];
         posix.close(dev.fd);
+        // Remember which event_number this ID was using, so the same
+        // controller gets the same ID when it reconnects.
+        self.sticky_ids[dev.id] = dev.event_number;
         self.free_id(dev.id);
         self.emit(.{ .disconnected = dev.id });
         _ = self.devices.swapRemove(idx);
@@ -551,9 +558,25 @@ pub const Context = struct {
 
     // ── internal: ID pool ───────────────────────────────────────────────
     //
-    // IDs are recycled from a 16-bit pool. Unplugging gamepad 0 and
-    // plugging in a new one gives the new one ID 0, not an ever-growing
-    // counter.
+    // IDs are recycled from a 16-bit pool. When a gamepad disconnects,
+    // its event_number → ID mapping is remembered in sticky_ids. If the
+    // same event_number reappears (e.g. controller reconnects after
+    // battery swap), it reclaims the same ID so player assignment is
+    // stable. A fresh ID is allocated only for genuinely new devices.
+
+    /// Check if a previously-disconnected ID was associated with this
+    /// event_number. If so, reclaim it (mark used, clear sticky entry).
+    fn reclaim_sticky_id(self: *@This(), event_number: u16) ?Id {
+        for (&self.sticky_ids, 0..) |*entry, i| {
+            if (entry.* == event_number) {
+                const id: Id = @intCast(i);
+                entry.* = null;
+                self.used_ids |= @as(u16, 1) << id;
+                return id;
+            }
+        }
+        return null;
+    }
 
     fn allocate_id(self: *@This()) ?Id {
         var i: u5 = 0;
