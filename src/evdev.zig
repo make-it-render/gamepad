@@ -156,6 +156,7 @@ const DeviceSlot = struct {
 /// Gamepad input context for Linux evdev.
 /// NOT thread-safe — all calls (init, poll, deinit) must happen from the same thread.
 pub const Context = struct {
+    io: std.Io,
     allocator: std.mem.Allocator,
     options: Options,
     devices: std.ArrayListUnmanaged(DeviceSlot),
@@ -167,9 +168,9 @@ pub const Context = struct {
 
     /// Set up the gamepad subsystem: start watching /dev/input for hotplug
     /// and scan for already-connected gamepads.
-    pub fn init(allocator: std.mem.Allocator, options: Options) !@This() {
+    pub fn init(io: std.Io, allocator: std.mem.Allocator, options: Options) !@This() {
         const inotify_fd = try inotify_init();
-        errdefer posix.close(inotify_fd);
+        errdefer _ = linux.close(inotify_fd);
 
         // If /dev/input doesn't exist (container, etc.) we just won't get
         // hotplug notifications. That's fine — gamepads can still be found
@@ -177,6 +178,7 @@ pub const Context = struct {
         inotify_add_watch(inotify_fd, "/dev/input") catch {};
 
         var self = @This(){
+            .io = io,
             .allocator = allocator,
             .options = options,
             .devices = .empty,
@@ -194,10 +196,10 @@ pub const Context = struct {
 
     /// Close all device file descriptors and the inotify watcher.
     pub fn deinit(self: *@This()) void {
-        for (self.devices.items) |dev| posix.close(dev.fd);
+        for (self.devices.items) |dev| _ = linux.close(dev.fd);
         self.devices.deinit(self.allocator);
         self.event_buf.deinit(self.allocator);
-        posix.close(self.inotify_fd);
+        _ = linux.close(self.inotify_fd);
         self.* = undefined;
     }
 
@@ -480,11 +482,11 @@ pub const Context = struct {
     /// Walk /dev/input/ and probe every eventN file. Non-gamepad devices
     /// are closed immediately.
     fn scan_devices(self: *@This()) void {
-        var dir = std.fs.openDirAbsolute("/dev/input", .{ .iterate = true }) catch return;
-        defer dir.close();
+        var dir = std.Io.Dir.openDirAbsolute(self.io, "/dev/input", .{ .iterate = true }) catch return;
+        defer dir.close(self.io);
 
         var it = dir.iterate();
-        while (it.next() catch null) |entry| {
+        while (it.next(self.io) catch null) |entry| {
             if (parse_event_number(entry.name)) |num| {
                 self.try_open_device(num);
             }
@@ -498,19 +500,19 @@ pub const Context = struct {
         var path_buf: [32]u8 = undefined;
         const path = std.fmt.bufPrint(&path_buf, "/dev/input/event{d}", .{event_number}) catch return;
 
-        const fd = posix.open(path, .{ .ACCMODE = .RDONLY, .NONBLOCK = true }, 0) catch return;
+        const fd = posix.openat(linux.AT.FDCWD, path, .{ .ACCMODE = .RDONLY, .NONBLOCK = true }, 0) catch return;
 
         // Ask the kernel which buttons this device supports. If it doesn't
         // have BTN_SOUTH (0x130, a.k.a. BTN_GAMEPAD), it's not a gamepad.
         if (!is_gamepad(fd)) {
-            posix.close(fd);
+            _ = linux.close(fd);
             return;
         }
 
         // If this event_number was previously assigned an ID, reclaim it
         // so the same controller keeps its player slot after reconnect.
         const id = self.reclaim_sticky_id(event_number) orelse self.allocate_id() orelse {
-            posix.close(fd);
+            _ = linux.close(fd);
             return;
         };
 
@@ -531,7 +533,7 @@ pub const Context = struct {
             .state = .{},
         }) catch {
             self.free_id(id);
-            posix.close(fd);
+            _ = linux.close(fd);
             return;
         };
 
@@ -540,7 +542,7 @@ pub const Context = struct {
 
     fn remove_device(self: *@This(), idx: usize) void {
         const dev = self.devices.items[idx];
-        posix.close(dev.fd);
+        _ = linux.close(dev.fd);
         // Remember which event_number this ID was using, so the same
         // controller gets the same ID when it reconnects.
         self.sticky_ids[dev.id] = dev.event_number;

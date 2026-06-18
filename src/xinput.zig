@@ -24,6 +24,14 @@ const log = std.log.scoped(.xinput);
 const windows = std.os.windows;
 const DWORD = windows.DWORD;
 const HMODULE = windows.HMODULE;
+const BOOL = windows.BOOL;
+const LPCWSTR = windows.LPCWSTR;
+const LPCSTR = windows.LPCSTR;
+const FARPROC = windows.FARPROC;
+
+extern "kernel32" fn LoadLibraryW(lpLibFileName: LPCWSTR) callconv(.winapi) ?HMODULE;
+extern "kernel32" fn FreeLibrary(hLibModule: HMODULE) callconv(.winapi) BOOL;
+extern "kernel32" fn GetProcAddress(hModule: HMODULE, lpProcName: LPCSTR) callconv(.winapi) ?FARPROC;
 
 // ── XInput ABI types ────────────────────────────────────────────────────────
 //
@@ -84,12 +92,12 @@ const DllInfo = struct {
 fn load_xinput() !DllInfo {
     const L = std.unicode.utf8ToUtf16LeStringLiteral;
 
-    const handle = windows.LoadLibraryW(L("xinput1_4.dll")) catch
-        windows.LoadLibraryW(L("xinput9_1_0.dll")) catch
+    const handle = LoadLibraryW(L("xinput1_4.dll")) orelse
+        LoadLibraryW(L("xinput9_1_0.dll")) orelse
         return error.XInputNotFound;
-    errdefer _ = windows.kernel32.FreeLibrary(handle);
+    errdefer _ = FreeLibrary(handle);
 
-    const proc = windows.kernel32.GetProcAddress(handle, "XInputGetState") orelse
+    const proc = GetProcAddress(handle, "XInputGetState") orelse
         return error.XInputNotFound;
 
     return .{
@@ -111,6 +119,7 @@ const Slot = struct {
 /// XInput gamepad context for Windows.
 /// NOT thread-safe — all calls (init, poll, deinit) must happen from the same thread.
 pub const Context = struct {
+    io: std.Io,
     allocator: std.mem.Allocator,
     options: Options,
     slots: [4]Slot,
@@ -118,13 +127,14 @@ pub const Context = struct {
     get_state_fn: XInputGetStateFn,
     event_buf: std.ArrayListUnmanaged(Event),
     event_pos: usize,
-    last_probe: ?std.time.Instant,
+    last_probe: ?std.Io.Timestamp,
 
     /// Set up the gamepad subsystem: load the XInput DLL and probe all 4 slots.
-    pub fn init(allocator: std.mem.Allocator, options: Options) !@This() {
+    pub fn init(io: std.Io, allocator: std.mem.Allocator, options: Options) !@This() {
         const dll = try load_xinput();
 
         var self = @This(){
+            .io = io,
             .allocator = allocator,
             .options = options,
             .slots = [1]Slot{.{}} ** 4,
@@ -144,7 +154,7 @@ pub const Context = struct {
     /// Free the event buffer, unload the XInput DLL, and poison the struct.
     pub fn deinit(self: *@This()) void {
         self.event_buf.deinit(self.allocator);
-        _ = windows.kernel32.FreeLibrary(self.dll_handle);
+        _ = FreeLibrary(self.dll_handle);
         self.* = undefined;
     }
 
@@ -190,10 +200,9 @@ pub const Context = struct {
     /// disconnected slots are only probed when the probe interval has
     /// elapsed.
     fn poll_slots(self: *@This()) void {
-        const now = std.time.Instant.now() catch null;
+        const now = std.Io.Clock.now(.awake, self.io);
         const should_probe = if (self.last_probe) |last| blk: {
-            const n = now orelse break :blk true;
-            break :blk n.since(last) >= PROBE_INTERVAL_NS;
+            break :blk last.durationTo(now).nanoseconds >= PROBE_INTERVAL_NS;
         } else true;
 
         for (0..4) |i| {

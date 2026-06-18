@@ -4,11 +4,11 @@
 const std = @import("std");
 const gamepad = @import("gamepad");
 
-pub fn main() !void {
-    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .init;
-    defer _ = gpa.deinit();
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.gpa;
+    const io = init.io;
 
-    var ctx = try gamepad.Context.init(gpa.allocator(), .{});
+    var ctx = try gamepad.Context.init(io, allocator, .{});
     defer ctx.deinit();
 
     std.debug.print("gamepad demo — press Ctrl+C to quit\n", .{});
@@ -26,6 +26,6 @@ pub fn main() !void {
         }
 
         // Poll at ~60 Hz to avoid busy-waiting.
-        std.Thread.sleep(16 * std.time.ns_per_ms);
+        try std.Io.sleep(io, std.Io.Duration.fromMilliseconds(16), .awake);
     }
 }
