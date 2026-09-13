@@ -37,7 +37,7 @@ pub const max_gamepads = common.max_gamepads;
 pub const Context = switch (builtin.os.tag) {
     .linux => @import("evdev.zig").Context,
     .windows => @import("xinput.zig").Context,
-    else => @compileError("mir-gamepad: unsupported platform"),
+    else => @compileError("gamepad: unsupported platform"),
 };
 
 test {
